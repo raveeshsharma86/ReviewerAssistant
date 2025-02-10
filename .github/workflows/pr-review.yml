@@ -22,7 +22,6 @@ jobs:
       # Step 1: Checkout the pull request code
       - name: Checkout code
         uses: actions/checkout@v4
-        fetch-depth: 5
         show-progress: true
 
       - name: Install GH CLI
@@ -61,12 +60,11 @@ jobs:
       - name: Read File Contents and Prepare Review
         id: review_files
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           FILE_CONTENTS=""
            for file in $FILES; do
            content=$(gh api "repos/${{ github.repository }}/contents/$file" \
-           -H "Authorization: Bearer $GH_TOKEN" \
            -H "Accept: application/vnd.github.v3.raw")
     
            FILE_CONTENTS="$FILE_CONTENTS\n$file:\n$content"
