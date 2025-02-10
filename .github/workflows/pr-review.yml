@@ -1,0 +1,149 @@
+name: Code Review
+
+on:
+  pull_request:
+    paths:
+      - '**/*.java'           # Java files
+      - '**/*.py'             # Python files
+      - '**/*.cs'             # .NET files (C#)
+      - '**/*.properties'     # Properties files (commonly used for config)
+      - '**/*.xml'            # XML files
+      - '**/*.yml'            # yml files
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      # Step 1: Checkout the pull request code
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          service_account: customerinformationwithaiagent@customerinfowithaiagent.iam.gserviceaccount.com
+
+      - name: Install GH CLI
+        uses: dev-hanz-ops/install-gh-cli-action@v0.2.1
+        with:
+          gh-cli-version: 2.65.0 # optional, see action.yml for current default
+
+      # Step 2: Set up Google Cloud SDK (for Google Vertex AI or other LLM APIs)
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          credentials: ${{ secrets.GCP_CREDENTIALS }}
+
+      # Step 3: Install curl (if it's not already installed)
+      - name: Install curl
+        run: sudo apt-get install curl jq
+
+      # Step 4: Get the pull request diff or files and prepare them for review
+#      - name: Get Pull Request Files
+#        id: pr_files
+#        run: |
+#          # Get all the relevant files in the PR (Java, Python, .NET, Properties, XML)
+#          files=$(gh pr diff --name-only)
+#          echo "FILES=$files" >> $GITHUB_ENV
+      - name: Get Changed Files
+        id: changed-files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+         
+          files=$(gh pr diff --name-only ${{ github.event.pull_request.number }} | tr '\n' ' ')
+          echo "Files obtained : $files"
+          echo "FILES=$files" >> $GITHUB_ENV
+
+      - name: Read File Contents and Prepare Review
+        id: review_files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FILE_CONTENTS=""
+           for file in $FILES; do
+           content=$(gh api "repos/${{ github.repository }}/contents/$file" \
+           -H "Authorization: Bearer $GH_TOKEN" \
+           -H "Accept: application/vnd.github.v3.raw")
+    
+           FILE_CONTENTS="$FILE_CONTENTS\n$file:\n$content"
+           done
+           echo "FILE_CONTENTS<<EOF" >> "$GITHUB_ENV"
+           echo -e "$FILE_CONTENTS" >> "$GITHUB_ENV"
+           echo "EOF" >> "$GITHUB_ENV"
+
+     
+
+      - name: Encode File Contents
+        run: |
+          BASE64_ENCODED_FILE_CONTENT=$(echo -e "$FILE_CONTENTS" | base64 -w 0)
+          echo "BASE64_ENCODED_FILE_CONTENT=$BASE64_ENCODED_FILE_CONTENT" >> "$GITHUB_ENV"
+
+      - name: Print base64 encoded contents
+        run: |
+          echo "BASE64_ENCODED_FILE_CONTENT from env: $BASE64_ENCODED_FILE_CONTENT"
+
+      # Step 5: Set GCLOUD_CREDENTIALS from GitHub Secrets
+      - name: Set GCLOUD_CREDENTIALS
+        run: echo "${{ secrets.GCLOUD_CREDENTIALS }}" | base64 --decode > $HOME/gcloud-credentials.json
+
+      # Step 6: Authenticate with Google Cloud using the credentials JSON
+      - name: Authenticate with Google Cloud
+        run: gcloud auth activate-service-account --key-file=$HOME/gcloud-credentials.json
+
+      - name: Authenticate with Google Cloud
+        env:
+            GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+        run: |
+            echo "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/google-credentials.json
+            gcloud auth activate-service-account --key-file=/tmp/google-credentials.json
+
+      - name: Get Access Token
+        id: get_token
+        run: echo "ACCESS_TOKEN=$(gcloud auth print-access-token)" >> $GITHUB_ENV
+
+
+      - name: New Create AI Code Review Request
+        run: |
+         
+          echo '${{ vars.VERTEX_PROMPT_JSON }}' > request.json
+          cat request.json
+          jq --arg new_value "${{ env.BASE64_ENCODED_FILE_CONTENT }}" \
+            '.contents.parts.text |= gsub("\\MY_BASE_64_ENCODED_CONTENT"; $new_value)' request.json > updated_request.json
+          echo "Jq running done. Now showing new content"
+          cat updated_request.json  
+
+      - name: Get AI Code Review Response
+        timeout-minutes: 10
+        run: |
+
+          # Send the request to the API endpoint
+          curl -X POST "https://us-central1-aiplatform.googleapis.com/v1/projects/customerinfowithaiagent/locations/us-central1/publishers/google/models/gemini-2.0-flash-exp:generateContent" \
+           -H "Authorization: Bearer $ACCESS_TOKEN" \
+           -H "Content-Type: application/json" \
+           -d @updated_request.json > response.json
+          echo "Printing the Pull Request reviews"
+          jq -r '.candidates[0].content.parts[0].text' response.json > review_comments.txt
+
+      - name: Save AI Review Comments
+        run: |
+          COMMENT_BODY=$(cat review_comments.txt)
+          COMMENT_BODY=$(echo "$COMMENT_BODY" | awk '{sub(/\r$/,""); print}')
+          
+          echo "COMMENT_BODY<<EOF" >> $GITHUB_ENV
+          echo "$COMMENT_BODY" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Publish AI Review as PR Comment
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ### Reviewer Assist : Ai Generated Code Review
+            
+            ${{ env.COMMENT_BODY }} 
+    
