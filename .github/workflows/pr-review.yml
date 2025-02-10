@@ -63,6 +63,7 @@ jobs:
         run: |
           FILE_CONTENTS=""
            for file in $FILES; do
+           echo "Checking fileName : $file"
            content=$(gh api "repos/${{ github.repository }}/contents/$file" \
            -H "Accept: application/vnd.github.v3.raw")
     
