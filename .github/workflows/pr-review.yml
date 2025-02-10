@@ -21,9 +21,9 @@ jobs:
     steps:
       # Step 1: Checkout the pull request code
       - name: Checkout code
-        uses: actions/checkout@v2
-        with:
-          service_account: customerinformationwithaiagent@customerinfowithaiagent.iam.gserviceaccount.com
+        uses: actions/checkout@v4
+        fetch-depth: 5
+        show-progress: true
 
       - name: Install GH CLI
         uses: dev-hanz-ops/install-gh-cli-action@v0.2.1
