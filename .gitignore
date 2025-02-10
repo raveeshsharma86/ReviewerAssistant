@@ -25,3 +25,5 @@ bin/
 /nbdist/
 /.nb-gradle/
 
+**/.DS_Store
+/idea/
