@@ -7,7 +7,6 @@ on:
       - '**/*.py'             # Python files
       - '**/*.cs'             # .NET files (C#)
       - '**/*.properties'     # Properties files (commonly used for config)
-      - '**/*.xml'            # XML files
       - '**/*.yml'            # yml files
 
 jobs:
