@@ -7,7 +7,6 @@ on:
       - '**/*.py'             # Python files
       - '**/*.cs'             # .NET files (C#)
       - '**/*.properties'     # Properties files (commonly used for config)
-      - '**/*.xml'            # XML files
       - '**/*.yml'            # yml files
 
 jobs:
@@ -21,9 +20,7 @@ jobs:
     steps:
       # Step 1: Checkout the pull request code
       - name: Checkout code
-        uses: actions/checkout@v2
-        with:
-          service_account: customerinformationwithaiagent@customerinfowithaiagent.iam.gserviceaccount.com
+        uses: actions/checkout@v4
 
       - name: Install GH CLI
         uses: dev-hanz-ops/install-gh-cli-action@v0.2.1
@@ -61,12 +58,12 @@ jobs:
       - name: Read File Contents and Prepare Review
         id: review_files
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           FILE_CONTENTS=""
            for file in $FILES; do
+           echo "Checking fileName : $file"
            content=$(gh api "repos/${{ github.repository }}/contents/$file" \
-           -H "Authorization: Bearer $GH_TOKEN" \
            -H "Accept: application/vnd.github.v3.raw")
     
            FILE_CONTENTS="$FILE_CONTENTS\n$file:\n$content"

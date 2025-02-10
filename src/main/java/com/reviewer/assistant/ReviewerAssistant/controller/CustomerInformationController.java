@@ -40,13 +40,13 @@ public class CustomerInformationController {
             System.out.println("Customer information cannot be null");
         }if(customerInformation.getFirstName() == null){
             System.out.println("First name cannot be null");
-        }/*if(customerInformation.getLastName() == null){
+        }if(customerInformation.getLastName() == null){
             System.out.println("last name cannot be null");
         }if(customerInformation.getAddressList() == null){
             System.out.println("Address list cannot be null");
         }if(customerInformation.getPhoneNumberList() == null){
             System.out.println("Address list cannot be null");
-        }if(customerInformation.getEmailAddressList() == null){
+        }/*if(customerInformation.getEmailAddressList() == null){
             System.out.println("Phone list cannot be null");
         }*/
     }
