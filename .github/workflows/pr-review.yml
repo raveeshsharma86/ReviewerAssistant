@@ -84,12 +84,12 @@ jobs:
           echo "BASE64_ENCODED_FILE_CONTENT from env: $BASE64_ENCODED_FILE_CONTENT"
 
       # Step 5: Set GCLOUD_CREDENTIALS from GitHub Secrets
-      - name: Set GCLOUD_CREDENTIALS
-        run: echo "${{ secrets.GCLOUD_CREDENTIALS }}" | base64 --decode > $HOME/gcloud-credentials.json
+      #- name: Set GCLOUD_CREDENTIALS
+      #  run: echo "${{ secrets.GCLOUD_CREDENTIALS }}" | base64 --decode > $HOME/gcloud-credentials.json
 
       # Step 6: Authenticate with Google Cloud using the credentials JSON
-      - name: Authenticate with Google Cloud
-        run: gcloud auth activate-service-account --key-file=$HOME/gcloud-credentials.json
+      #- name: Authenticate with Google Cloud
+      #  run: gcloud auth activate-service-account --key-file=$HOME/gcloud-credentials.json
 
       - name: Authenticate with Google Cloud
         env:
