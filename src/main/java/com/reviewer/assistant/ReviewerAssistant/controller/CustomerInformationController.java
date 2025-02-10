@@ -46,9 +46,9 @@ public class CustomerInformationController {
             System.out.println("Address list cannot be null");
         }if(customerInformation.getPhoneNumberList() == null){
             System.out.println("Address list cannot be null");
-        }if(customerInformation.getEmailAddressList() == null){
+        }/*if(customerInformation.getEmailAddressList() == null){
             System.out.println("Phone list cannot be null");
-        }
+        }*/
     }
 
     @GetMapping("/customerInformation/")
