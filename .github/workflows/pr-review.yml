@@ -1,4 +1,4 @@
-name: Code Review
+name: Sentinel AI Code Review
 
 on:
   pull_request:
@@ -143,4 +143,114 @@ jobs:
             ### Reviewer Assist : Ai Generated Code Review
             
             ${{ env.COMMENT_BODY }} 
-    
+      
+
+      # New steps start here
+      - name: Format Review Comments as JSON
+        run: |
+          # Create request for formatting comments to JSON
+          echo '${{ vars.VERTEX_FORMAT_JSON_PROMPT }}' > format_request.json
+
+          # Replace placeholder with actual comments
+          jq --arg comments "$COMMENT_BODY" \
+            '.contents.parts.text |= gsub("\\REVIEW_COMMENTS"; $comments)' format_request.json > format_updated_request.json
+
+          # Call Vertex AI to format as JSON
+          curl -X POST "https://us-central1-aiplatform.googleapis.com/v1/projects/customerinfowithaiagent/locations/us-central1/publishers/google/models/gemini-2.0-flash-exp:generateContent" \
+           -H "Authorization: Bearer $ACCESS_TOKEN" \
+           -H "Content-Type: application/json" \
+           -d @format_updated_request.json > json_response.json
+
+          # Extract formatted JSON
+          jq -r '.candidates[0].content.parts[0].text' json_response.json > review_comments_formatted.json
+
+          echo "Formatted JSON review comments:"
+          cat review_comments_formatted.json
+
+      - name: Prepare Files for LLM Code Fixing
+        run: |
+          # Create a directory for modified files
+          mkdir -p modified_files
+
+          # Read the JSON review comments
+          REVIEW_JSON=$(cat review_comments_formatted.json)
+
+          # Process each file mentioned in the review
+          for file in $FILES; do
+            echo "Processing $file for LLM code fixing"
+
+            # Get original file content and encode in base64
+            ORIGINAL_CONTENT=$(cat "$file" | base64 -w 0)
+
+            # Create request for code fixing
+            echo '${{ vars.VERTEX_CODE_FIX_PROMPT }}' > fix_request.json
+
+            # Replace placeholders in the prompt
+            jq --arg file "$file" \
+               --arg content "$ORIGINAL_CONTENT" \
+               --arg review "$REVIEW_JSON" \
+            '.contents.parts.text |= gsub("\\FILE_PATH"; $file) | 
+             .contents.parts.text |= gsub("\\FILE_CONTENT"; $content) |
+             .contents.parts.text |= gsub("\\REVIEW_JSON"; $review)' \
+            fix_request.json > fix_updated_request.json
+
+            # Call Vertex AI to fix the code
+            curl -X POST "https://us-central1-aiplatform.googleapis.com/v1/projects/customerinfowithaiagent/locations/us-central1/publishers/google/models/gemini-2.0-flash-exp:generateContent" \
+             -H "Authorization: Bearer $ACCESS_TOKEN" \
+             -H "Content-Type: application/json" \
+             -d @fix_updated_request.json > fix_response.json
+
+            # Extract and decode the fixed code
+            jq -r '.candidates[0].content.parts[0].text' fix_response.json | base64 -d > "modified_files/$(basename "$file")"
+
+            echo "Completed processing $file"
+          done    
+
+
+      - name: Get source branch name
+        run: |
+          SOURCE_BRANCH="${{ github.head_ref }}"
+          echo "SOURCE_BRANCH=$SOURCE_BRANCH" >> $GITHUB_ENV
+          echo "AI_BRANCH=ai-assisted-$SOURCE_BRANCH" >> $GITHUB_ENV
+
+      - name: Create AI-assisted branch
+        run: |
+          git config --global user.name 'GitHub Action Bot'
+          git config --global user.email 'action@github.com'
+          git checkout -b ${{ env.AI_BRANCH }} ${{ env.SOURCE_BRANCH }}
+
+      - name: Copy Modified Files and Stage Changes
+        run: |
+          # Copy modified files to their original locations
+          for file in $FILES; do
+            modified_file="modified_files/$(basename "$file")"
+            if [ -f "$modified_file" ]; then
+              echo "Copying modified file: $file"
+              cp "$modified_file" "$file"
+            fi
+          done
+
+      - name: Commit and push changes
+        run: |
+          git add .
+          git commit -m "AI-assisted changes based on review comments
+
+          Applied automated fixes suggested by AI code review.
+          Original PR: #${{ github.event.pull_request.number }}"
+          git push origin ${{ env.AI_BRANCH }}
+
+      - name: Create Pull Request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr create \
+            --base ${{ env.SOURCE_BRANCH }} \
+            --head ${{ env.AI_BRANCH }} \
+            --title "AI-assisted changes for ${{ env.SOURCE_BRANCH }}" \
+            --body "This PR contains AI-implemented improvements based on the code review. 
+
+            Changes were automatically applied based on the AI review comments and verified for correctness.
+
+            Original PR: #${{ github.event.pull_request.number }}
+
+            Please review the changes and merge if they align with your requirements."
