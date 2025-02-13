@@ -143,9 +143,35 @@ jobs:
             ### Reviewer Assist : Ai Generated Code Review
             
             ${{ env.COMMENT_BODY }} 
+
+      - name: Clean Markdown from Review
+        run: |
+          # Save the original comment body to a file
+          echo "$COMMENT_BODY" > original_review.txt
+          
+          # Create request for cleaning markdown
+          echo '${{ vars.VERTEX_CLEAN_MARKDOWN_PROMPT }}' > clean_request.json
+          
+          # Replace placeholder with actual review text
+          jq --arg review "$COMMENT_BODY" \
+            '.contents.parts.text |= gsub("\\REVIEW_TEXT"; $review)' clean_request.json > clean_updated_request.json
+          
+          # Call Vertex AI to clean the markdown
+          curl -X POST "https://us-central1-aiplatform.googleapis.com/v1/projects/customerinfowithaiagent/locations/us-central1/publishers/google/models/gemini-2.0-flash-exp:generateContent" \
+           -H "Authorization: Bearer $ACCESS_TOKEN" \
+           -H "Content-Type: application/json" \
+           -d @clean_updated_request.json > clean_response.json
+          
+          # Extract cleaned text and update COMMENT_BODY
+          CLEANED_TEXT=$(jq -r '.candidates[0].content.parts[0].text' clean_response.json)
+          
+          # Update the environment variable
+          echo "COMMENT_BODY<<EOF" >> $GITHUB_ENV
+          echo "$CLEANED_TEXT" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
       
 
-      # New steps start here
       - name: Format Review Comments as JSON
         run: |
           # Create request for formatting comments to JSON
