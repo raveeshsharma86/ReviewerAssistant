@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": 400,
+    "message": "Please use a valid role: user, model.",
+    "status": "INVALID_ARGUMENT"
+  }
+}
