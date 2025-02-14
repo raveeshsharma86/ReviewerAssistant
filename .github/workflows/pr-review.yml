@@ -86,14 +86,6 @@ jobs:
         run: |
           echo "BASE64_ENCODED_FILE_CONTENT from env: $BASE64_ENCODED_FILE_CONTENT"
 
-      # Step 5: Set GCLOUD_CREDENTIALS from GitHub Secrets
-      #- name: Set GCLOUD_CREDENTIALS
-      #  run: echo "${{ secrets.GCLOUD_CREDENTIALS }}" | base64 --decode > $HOME/gcloud-credentials.json
-
-      # Step 6: Authenticate with Google Cloud using the credentials JSON
-      #- name: Authenticate with Google Cloud
-      #  run: gcloud auth activate-service-account --key-file=$HOME/gcloud-credentials.json
-
       - name: Authenticate with Google Cloud
         env:
             GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
@@ -126,7 +118,19 @@ jobs:
            -H "Content-Type: application/json" \
            -d @updated_request.json > response.json
           echo "Printing the Pull Request reviews"
+          # This is used for printing in the PR 
           jq -r '.candidates[0].content.parts[0].text' response.json > review_comments.txt
+
+      - name: Convert markdown to plain text
+        id: markdown_to_text_converter
+        uses: docker://pandoc/core:3.5
+        with:
+          args:  "--from markdown --to plain -o review_comments_plain.txt review_comments.txt"
+
+      - name: Print plain Text
+        run: |
+          echo "Printing plain text review comments"
+          cat review_comments_plain.txt
 
       - name: Save AI Review Comments
         run: |
@@ -145,95 +149,4 @@ jobs:
           body: |
             ### Reviewer Assist : Ai Generated Code Review
             
-            ${{ env.COMMENT_BODY }} 
-
-      - name: Create Enhanced AI Code Review Request
-        run: |
-          echo '${{ vars.VERTEX_CODE_FIX_PROMPT }}' > review_comments_fix.json
-          jq --arg new_value "${{ env.BASE64_ENCODED_FILE_CONTENT }}" \
-            '.contents.parts[].text |= gsub("\\MY_BASE_64_ENCODED_CONTENT"; $new_value)' review_comments_fix.json > updated_review_comments_fix.json
-          cat updated_review_comments_fix.json
-          
-
-      - name: Get AI Code Fix Response
-        timeout-minutes: 10
-        run: |
-          # Send the request to the API endpoint
-          curl -X POST "https://us-central1-aiplatform.googleapis.com/v1/projects/customerinfowithaiagent/locations/us-central1/publishers/google/models/gemini-2.0-flash-exp:generateContent" \
-           -H "Authorization: Bearer $ACCESS_TOKEN" \
-           -H "Content-Type: application/json" \
-           -d @updated_review_comments_fix.json > code_fix_response.json
-
-          # Extract the base64 encoded content from response
-          jq -r '.candidates[0].content.parts[0].text' code_fix_response.json > encoded_fixed_code.txt
-
-          # Decode the base64 content
-          cat encoded_fixed_code.txt | base64 -d > fixed_code.txt
-          cat fixed_code.txt
-
-          echo "Fixed code has been decoded and saved to fixed_code.txt"
-
-# works till here
-      - name: Create and Switch to AI-assisted Branch
-        id: ai_assisted_branch_creation
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-        run: |
-            # Get the source branch name from the PR
-            SOURCE_BRANCH="${{ github.head_ref }}"
-            echo "Source branch is: $SOURCE_BRANCH"
-            
-            # Create new branch name
-            AI_BRANCH="ai-assisted-${SOURCE_BRANCH}"
-            echo "AI branch will be: $AI_BRANCH"
-            
-            # Ensure we're on the source branch
-            git fetch origin
-            git checkout $SOURCE_BRANCH
-            
-            # Create new branch from source branch
-            git checkout -b $AI_BRANCH
-            
-            # Save branch name for later steps
-            echo "AI_BRANCH=$AI_BRANCH" >> $GITHUB_ENV
-
-      - name: Update Files with AI Changes
-        id: file_update_in_ai_assisted_branch
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-        run: |
-            # Get list of files from the PR
-            for file in $FILES; do
-              # Create directories if they don't exist
-              mkdir -p $(dirname "$file")
-            
-              # Copy the fixed content to the file
-              cat fixed_code.txt > "$file"
-            done
-
-      - name: Commit and Push Changes
-        id: commit_and_push_in_ai_assisted_branch
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-        run: |
-            # Configure git
-            git config --global user.name 'GitHub Actions Bot'
-            git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          
-            # Set up authentication using the token
-            git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-            
-            # Add all changes
-            git add .
-            
-            # Commit changes
-            git commit -m "AI-assisted improvements: Enhanced code quality and naming"
-          
-            # Integrate remote changes (if any)
-            git pull --rebase origin ${{ env.AI_BRANCH }} || true
-            
-            # Push the new branch with changes
-            git push origin ${{ env.AI_BRANCH }}
+            ${{ env.COMMENT_BODY }}
