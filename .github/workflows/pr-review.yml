@@ -8,6 +8,7 @@ on:
       - '**/*.cs'             # .NET files (C#)
       - '**/*.properties'     # Properties files (commonly used for config)
       - '**/*.yml'            # yml files
+  push:
 
 jobs:
   review:
@@ -177,7 +178,7 @@ jobs:
       - name: Create and Switch to AI-assisted Branch
         id: ai_assisted_branch_creation
         env:
-          GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
         run: |
             # Get the source branch name from the PR
@@ -201,7 +202,7 @@ jobs:
       - name: Update Files with AI Changes
         id: file_update_in_ai_assisted_branch
         env:
-          GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
         run: |
             # Get list of files from the PR
@@ -216,7 +217,7 @@ jobs:
       - name: Commit and Push Changes
         id: commit_and_push_in_ai_assisted_branch
         env:
-          GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
         run: |
             # Configure git
@@ -224,7 +225,7 @@ jobs:
             git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           
             # Set up authentication using the token
-            git remote set-url origin https://x-access-token:${{ secrets.WORKFLOW_TOKEN }}@github.com/${{ github.repository }}.git
+            git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
             
             # Add all changes
             git add .
