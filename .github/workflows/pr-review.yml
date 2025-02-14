@@ -166,5 +166,53 @@ jobs:
 
           # Decode the base64 content
           cat encoded_fixed_code.txt | base64 -d > fixed_code.txt
+          cat fixed_code.txt
 
           echo "Fixed code has been decoded and saved to fixed_code.txt"
+
+# works till here
+      - name: Create and Switch to AI-assisted Branch
+        run: |
+            # Get the source branch name from the PR
+            SOURCE_BRANCH="${{ github.head_ref }}"
+            echo "Source branch is: $SOURCE_BRANCH"
+            
+            # Create new branch name
+            AI_BRANCH="ai-assisted-${SOURCE_BRANCH}"
+            echo "AI branch will be: $AI_BRANCH"
+            
+            # Ensure we're on the source branch
+            git fetch origin
+            git checkout $SOURCE_BRANCH
+            
+            # Create new branch from source branch
+            git checkout -b $AI_BRANCH
+            
+            # Save branch name for later steps
+            echo "AI_BRANCH=$AI_BRANCH" >> $GITHUB_ENV
+
+      - name: Update Files with AI Changes
+        run: |
+            # Get list of files from the PR
+            for file in $FILES; do
+              # Create directories if they don't exist
+              mkdir -p $(dirname "$file")
+            
+              # Copy the fixed content to the file
+              cat fixed_code.txt > "$file"
+            done
+
+      - name: Commit and Push Changes
+        run: |
+            # Configure git
+            git config --global user.name 'GitHub Actions Bot'
+            git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+            
+            # Add all changes
+            git add .
+            
+            # Commit changes
+            git commit -m "AI-assisted improvements: Enhanced code quality and naming"
+            
+            # Push the new branch with changes
+            git push origin ${{ env.AI_BRANCH }}
