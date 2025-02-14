@@ -16,6 +16,7 @@ jobs:
     permissions:
       pull-requests: write
       contents: write
+      workflows: write
 
     steps:
       # Step 1: Checkout the pull request code
