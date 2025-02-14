@@ -224,7 +224,7 @@ jobs:
             git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           
             # Set up authentication using the token
-            git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+            git remote set-url origin https://x-access-token:${{ secrets.WORKFLOW_TOKEN }}@github.com/${{ github.repository }}.git
             
             # Add all changes
             git add .
