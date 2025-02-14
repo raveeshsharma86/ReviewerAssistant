@@ -49,6 +49,7 @@ public class CustomerInformationController {
         }if(customerInformation.getEmailAddressList() == null){
             System.out.println("Phone list cannot be null");
         }
+        //copy paste mistakes
     }
 
     @GetMapping("/customerInformation/")
