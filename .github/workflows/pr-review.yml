@@ -177,7 +177,7 @@ jobs:
       - name: Create and Switch to AI-assisted Branch
         id: ai_assisted_branch_creation
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
 
         run: |
             # Get the source branch name from the PR
@@ -201,7 +201,7 @@ jobs:
       - name: Update Files with AI Changes
         id: file_update_in_ai_assisted_branch
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
 
         run: |
             # Get list of files from the PR
@@ -216,7 +216,7 @@ jobs:
       - name: Commit and Push Changes
         id: commit_and_push_in_ai_assisted_branch
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
 
         run: |
             # Configure git
