@@ -150,3 +150,21 @@ jobs:
           jq --arg new_value "${{ env.BASE64_ENCODED_FILE_CONTENT }}" \
             '.contents.parts[].text |= gsub("\\MY_BASE_64_ENCODED_CONTENT"; $new_value)' review_comments_fix.json > updated_review_comments_fix.json
           cat updated_review_comments_fix.json
+          
+
+      - name: Get AI Code Fix Response
+        timeout-minutes: 10
+        run: |
+          # Send the request to the API endpoint
+          curl -X POST "https://us-central1-aiplatform.googleapis.com/v1/projects/customerinfowithaiagent/locations/us-central1/publishers/google/models/gemini-2.0-flash-exp:generateContent" \
+           -H "Authorization: Bearer $ACCESS_TOKEN" \
+           -H "Content-Type: application/json" \
+           -d @updated_review_comments_fix.json > code_fix_response.json
+
+          # Extract the base64 encoded content from response
+          jq -r '.candidates[0].content.parts[0].text' code_fix_response.json > encoded_fixed_code.txt
+
+          # Decode the base64 content
+          cat encoded_fixed_code.txt | base64 -d > fixed_code.txt
+
+          echo "Fixed code has been decoded and saved to fixed_code.txt"
