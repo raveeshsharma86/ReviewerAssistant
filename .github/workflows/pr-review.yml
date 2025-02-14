@@ -231,6 +231,9 @@ jobs:
             
             # Commit changes
             git commit -m "AI-assisted improvements: Enhanced code quality and naming"
+          
+            # Integrate remote changes (if any)
+            git pull --rebase origin ${{ env.AI_BRANCH }} || true
             
             # Push the new branch with changes
             git push origin ${{ env.AI_BRANCH }}
