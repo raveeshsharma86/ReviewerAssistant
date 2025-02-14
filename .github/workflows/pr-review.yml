@@ -15,7 +15,7 @@ jobs:
     timeout-minutes: 60
     permissions:
       pull-requests: write
-      contents: read
+      contents: write
 
     steps:
       # Step 1: Checkout the pull request code
