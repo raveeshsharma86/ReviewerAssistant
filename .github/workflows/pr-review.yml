@@ -207,8 +207,12 @@ jobs:
             # Configure git
             git config --global user.name 'GitHub Actions Bot'
             git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-            
-            # Add all changes
+          
+          # Set up authentication using the token
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          
+          
+          # Add all changes
             git add .
             
             # Commit changes
