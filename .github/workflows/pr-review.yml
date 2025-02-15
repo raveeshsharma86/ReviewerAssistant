@@ -251,16 +251,21 @@ jobs:
             # Create directory for fixed code
             mkdir -p code_fixes
             
-            # Create fix template JSON
+            # Create fix template JSON with correct Gemini API format
             cat > fix_template.json << 'EOL'
             {
               "contents": {
-                "parts": [
-                  {
-                    "text": "You are an expert code reviewer and fixer. Here is the original code for file CURRENT_FILE_NAME:\n\n```\nORIGINAL_CODE\n```\n\nHere are the review comments:\n\nREVIEW_COMMENTS\n\nPlease provide the fixed version of the code addressing all review comments. Only output the fixed code without any explanations or markdown formatting. Keep the same file structure and format. If no changes are needed, output the original code as is."
-                  }
-                ]
-              }
+                "role": "user",
+                "parts": [{
+                  "text": "You are an expert code reviewer and fixer. Here is the original code for file CURRENT_FILE_NAME:\n\n```\nORIGINAL_CODE\n```\n\nHere are the review comments:\n\nREVIEW_COMMENTS\n\nPlease provide the fixed version of the code addressing all review comments. Output only the code without any explanations or markdown formatting. Keep the same file structure and format. If no changes are needed, output the original code as is."
+                }]
+              },
+              "safetySettings": [
+                {
+                  "category": "HARM_CATEGORY_HARASSMENT",
+                  "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+                }
+              ]
             }
             EOL
             
@@ -274,13 +279,15 @@ jobs:
             
               # Only process if review suggests changes
               if [[ $(echo "$review_content" | grep -iE "suggestion|improve|fix|change|update|modify|replace|add|remove") ]]; then
+                echo "Found suggestions in review, generating fixes..."
+            
                 # Create prompt for code fixing
                 jq --arg file "$file" \
                    --arg code "$original_content" \
                    --arg review "$review_content" \
-                   '.contents.parts.text |= gsub("CURRENT_FILE_NAME"; $file) | 
-                    .contents.parts.text |= gsub("ORIGINAL_CODE"; $code) |
-                    .contents.parts.text |= gsub("REVIEW_COMMENTS"; $review)' \
+                   '.contents.parts[0].text |= gsub("CURRENT_FILE_NAME"; $file) | 
+                    .contents.parts[0].text |= gsub("ORIGINAL_CODE"; $code) |
+                    .contents.parts[0].text |= gsub("REVIEW_COMMENTS"; $review)' \
                    fix_template.json > "code_fixes/request_${file//\//_}.json"
             
                 # Get AI-generated fixes
@@ -296,6 +303,8 @@ jobs:
             
                 # Track files that were actually modified
                 echo "$file" >> modified_files.txt
+              else
+                echo "No actionable suggestions found in review, skipping fixes"
               fi
             done
 
