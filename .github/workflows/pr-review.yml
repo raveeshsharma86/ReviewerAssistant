@@ -183,28 +183,28 @@ jobs:
             
             echo "}" >> review_mapping.json
 
-      - name: Convert markdown to plain text
-        id: markdown_to_text_converter
-        uses: docker://pandoc/core:3.5
-        with:
-          args:  "--from markdown --to plain -o review_comments_plain.txt review_comments.txt"
+      #- name: Convert markdown to plain text
+      #  id: markdown_to_text_converter
+      ##  uses: docker://pandoc/core:3.5
+      #  with:
+      #    args:  "--from markdown --to plain -o review_comments_plain.txt review_comments.txt"
 
-      - name: Print plain Text
-        run: |
-          echo "Printing plain text review comments"
-          
-          cat review_comments_plain.txt | \
-          sed 's/^#\+//g' | \
-          sed 's/\*\*//g' | \
-          sed 's/\*//g' | \
-          sed 's/`\{1,3\}//g' | \
-          sed 's/^-\s//g' | \
-          sed 's/^\s\+//g' | \
-          sed '/^$/d' | \
-          tr '\n' ' ' | \
-          sed 's/\s\+/ /g' | \
-          jq -R -s '{ "text": . }' > clean_review_comments.json
-          cat clean_review_comments.json
+      #- name: Print plain Text
+      #  run: |
+      #    echo "Printing plain text review comments"
+      #
+      #    cat review_comments_plain.txt | \
+      #    sed 's/^#\+//g' | \
+      #    sed 's/\*\*//g' | \
+      #    sed 's/\*//g' | \
+      #    sed 's/`\{1,3\}//g' | \
+      #    sed 's/^-\s//g' | \
+      #    sed 's/^\s\+//g' | \
+      #    sed '/^$/d' | \
+      #    tr '\n' ' ' | \
+      #    sed 's/\s\+/ /g' | \
+      #    jq -R -s '{ "text": . }' > clean_review_comments.json
+      #    cat clean_review_comments.json
           
 
       - name: Format Combined Review
