@@ -58,24 +58,50 @@ jobs:
           echo "Files obtained : $files"
           echo "FILES=$files" >> $GITHUB_ENV
 
+      - name: Create Processing Directories
+        run: |
+          mkdir -p file_contents
+          mkdir -p review_responses
+          
+          
+
+      #- name: Read File Contents and Prepare Review
+      #  id: review_files
+      #  env:
+      #    GH_TOKEN: ${{ github.token }}
+      #  run: |
+      #    FILE_CONTENTS=""
+      #     for file in $FILES; do
+      #     echo "Checking fileName : $file"
+      #     content=$(gh api "repos/${{ github.repository }}/contents/$file" \
+      #     -H "Accept: application/vnd.github.v3.raw")
+
+      #     FILE_CONTENTS="$FILE_CONTENTS\n$file:\n$content"
+      #     done
+      #     echo "FILE_CONTENTS<<EOF" >> "$GITHUB_ENV"
+      #     echo -e "$FILE_CONTENTS" >> "$GITHUB_ENV"
+      #     echo "EOF" >> "$GITHUB_ENV"
+
       - name: Read File Contents and Prepare Review
         id: review_files
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          FILE_CONTENTS=""
-           for file in $FILES; do
-           echo "Checking fileName : $file"
-           content=$(gh api "repos/${{ github.repository }}/contents/$file" \
-           -H "Accept: application/vnd.github.v3.raw")
-    
-           FILE_CONTENTS="$FILE_CONTENTS\n$file:\n$content"
-           done
-           echo "FILE_CONTENTS<<EOF" >> "$GITHUB_ENV"
-           echo -e "$FILE_CONTENTS" >> "$GITHUB_ENV"
-           echo "EOF" >> "$GITHUB_ENV"
-
-     
+            for file in $FILES; do
+              echo "Processing file: $file"
+              # Get raw content and encode to base64
+              content=$(gh api "repos/${{ github.repository }}/contents/$file" \
+                -H "Accept: application/vnd.github.v3.raw" | base64 -w 0)
+            
+              # Save base64 content to individual file
+              echo "$content" > "file_contents/${file//\//_}.b64"
+            
+              # Create individual request JSON for this file
+              jq --arg file "$file" \
+                 --arg content "$content" \
+                 '.contents.parts.text |= gsub("\\MY_BASE_64_ENCODED_CONTENT"; $content) | .contents.parts.text |= gsub("\\CURRENT_FILE_NAME"; $file)' \
+                 ${{ vars.VERTEX_PROMPT_JSON }} > "file_contents/request_${file//\//_}.json"
+            done
 
       - name: Encode File Contents
         run: |
@@ -108,18 +134,55 @@ jobs:
           echo "Jq running done. Now showing new content"
           cat updated_request.json  
 
+      #- name: Get AI Code Review Response
+      #  timeout-minutes: 10
+      #  run: |
+
+          # Send the request to the API endpoint
+      #    curl -X POST "https://us-central1-aiplatform.googleapis.com/v1/projects/customerinfowithaiagent/locations/us-central1/publishers/google/models/gemini-2.0-flash-exp:generateContent" \
+      #     -H "Authorization: Bearer $ACCESS_TOKEN" \
+      #     -H "Content-Type: application/json" \
+      #     -d @updated_request.json > response.json
+      #    echo "Printing the Pull Request reviews"
+      #    # This is used for printing in the PR
+      #    jq -r '.candidates[0].content.parts[0].text' response.json > review_comments.txt
+
       - name: Get AI Code Review Response
         timeout-minutes: 10
         run: |
-
-          # Send the request to the API endpoint
-          curl -X POST "https://us-central1-aiplatform.googleapis.com/v1/projects/customerinfowithaiagent/locations/us-central1/publishers/google/models/gemini-2.0-flash-exp:generateContent" \
-           -H "Authorization: Bearer $ACCESS_TOKEN" \
-           -H "Content-Type: application/json" \
-           -d @updated_request.json > response.json
-          echo "Printing the Pull Request reviews"
-          # This is used for printing in the PR 
-          jq -r '.candidates[0].content.parts[0].text' response.json > review_comments.txt
+            echo "{" > review_mapping.json
+            first=true
+            
+            for file in $FILES; do
+              if [ "$first" = true ]; then
+                first=false
+              else
+                echo "," >> review_mapping.json
+              fi
+            
+              echo "Reviewing file: $file"
+            
+              # Send request for this specific file
+              curl -X POST "https://us-central1-aiplatform.googleapis.com/v1/projects/customerinfowithaiagent/locations/us-central1/publishers/google/models/gemini-2.0-flash-exp:generateContent" \
+                -H "Authorization: Bearer $ACCESS_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d @"file_contents/request_${file//\//_}.json" > "review_responses/${file//\//_}.json"
+            
+              # Extract and clean the review comments
+              jq -r '.candidates[0].content.parts[0].text' "review_responses/${file//\//_}.json" > "review_responses/${file//\//_}.txt"
+            
+              # Format for mapping
+              cleaned_content=$(cat "review_responses/${file//\//_}.txt" | \
+                sed 's/```[a-zA-Z]*//g' | \
+                sed 's/```//g' | \
+                sed 's/\\/\\\\/g' | \
+                sed 's/"/\\"/g' | \
+                sed ':a;N;$!ba;s/\n/\\n/g')
+            
+              echo "  \"$file\": \"$cleaned_content\"" >> review_mapping.json
+            done
+            
+            echo "}" >> review_mapping.json
 
       - name: Convert markdown to plain text
         id: markdown_to_text_converter
@@ -143,6 +206,25 @@ jobs:
           sed 's/\s\+/ /g' | \
           jq -R -s '{ "text": . }' > clean_review_comments.json
           cat clean_review_comments.json
+          
+
+      - name: Format Combined Review
+        run: |
+          echo "### AI Code Review Summary" > formatted_review.md
+          echo "" >> formatted_review.md
+          
+          for file in $FILES; do
+            echo "#### 📁 $file" >> formatted_review.md
+            echo "" >> formatted_review.md
+            echo "<details><summary>Show Review</summary>" >> formatted_review.md
+            echo "" >> formatted_review.md
+            cat "review_responses/${file//\//_}.txt" >> formatted_review.md
+            echo "" >> formatted_review.md
+            echo "</details>" >> formatted_review.md
+            echo "" >> formatted_review.md
+          done
+          
+          cat formatted_review.md > review_comments.txt    
 
       - name: Save AI Review Comments
         run: |
