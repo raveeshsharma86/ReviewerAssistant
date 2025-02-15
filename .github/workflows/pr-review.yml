@@ -312,57 +312,59 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-                # Get source branch name from PR
-                SOURCE_BRANCH="${{ github.event.pull_request.head.ref }}"
-                
-                # Create AI-assisted branch name
-                AI_BRANCH="ai-assisted-${SOURCE_BRANCH}"
-                
-                # Fetch the source branch
-                git remote add source ${{ github.event.pull_request.head.repo.clone_url }}
-                git fetch source ${SOURCE_BRANCH}
-                
-                # Create new branch from source branch
-                git checkout -b ${AI_BRANCH} source/${SOURCE_BRANCH}
-                
-                # Only apply fixes for files that were modified
-                if [ -f modified_files.txt ]; then
-                  while IFS= read -r file; do
-                    # Ensure directory exists
-                    mkdir -p $(dirname "$file")
-                    # Copy fixed file
-                    cp "code_fixes/${file//\//_}.fixed" "$file"
-                    git add "$file"
-                  done < modified_files.txt
-                
-                  # Only create PR if there are changes
-                  if ! git diff --staged --quiet; then
-                    # Commit and push changes
-                    git config --global user.name "AI Code Fix Bot"
-                    git config --global user.email "bot@example.com"
-                    git commit -m "fix: Apply AI-suggested code improvements
-                
-                    Based on code review feedback from AI reviewer.
-                    Original PR: #${{ github.event.pull_request.number }}"
-                
-                    git push source ${AI_BRANCH}
-                
-                    # Create PR targeting the original source branch
-                    gh pr create \
-                      --title "🤖 AI Suggested Fixes for $SOURCE_BRANCH" \
-                      --body "This PR contains AI-suggested fixes based on the code review feedback.
-                
-                      Original PR: #${{ github.event.pull_request.number }}
-                
-                      Changes made:
-                      $(git diff --staged --name-only | sed 's/^/- /')
-                
-                      Note: Please review these changes carefully before merging." \
-                      --base "${SOURCE_BRANCH}" \
-                      --head "${AI_BRANCH}"
-                  else
-                    echo "No changes to commit after applying fixes"
-                  fi
-                else
-                  echo "No files needed fixes based on review comments"
-                fi
+            # Get source branch name from PR
+            SOURCE_BRANCH="${{ github.event.pull_request.head.ref }}"
+            
+            # Create AI-assisted branch name with timestamp to make it unique
+            TIMESTAMP=$(date +%Y%m%d%H%M%S)
+            AI_BRANCH="ai-assisted-${SOURCE_BRANCH}-${TIMESTAMP}"
+            
+            # Fetch the source branch
+            git remote add source ${{ github.event.pull_request.head.repo.clone_url }}
+            git fetch source ${SOURCE_BRANCH}
+            
+            # Create new branch from source branch
+            git checkout -b ${AI_BRANCH} source/${SOURCE_BRANCH}
+            
+            # Only apply fixes for files that were modified
+            if [ -f modified_files.txt ]; then
+              while IFS= read -r file; do
+                # Ensure directory exists
+                mkdir -p $(dirname "$file")
+                # Copy fixed file
+                cp "code_fixes/${file//\//_}.fixed" "$file"
+                git add "$file"
+              done < modified_files.txt
+            
+              # Only create PR if there are changes
+              if ! git diff --staged --quiet; then
+                # Commit and push changes
+                git config --global user.name "AI Code Fix Bot"
+                git config --global user.email "bot@example.com"
+                git commit -m "fix: Apply AI-suggested code improvements
+            
+                Based on code review feedback from AI reviewer.
+                Original PR: #${{ github.event.pull_request.number }}"
+            
+                # Force push to the new unique branch
+                git push -u source ${AI_BRANCH}
+            
+                # Create PR targeting the original source branch
+                gh pr create \
+                  --title "🤖 AI Suggested Fixes for ${SOURCE_BRANCH} (${TIMESTAMP})" \
+                  --body "This PR contains AI-suggested fixes based on the code review feedback.
+            
+                  Original PR: #${{ github.event.pull_request.number }}
+            
+                  Changes made:
+                  $(git diff --staged --name-only | sed 's/^/- /')
+            
+                  Note: Please review these changes carefully before merging." \
+                  --base "${SOURCE_BRANCH}" \
+                  --head "${AI_BRANCH}"
+              else
+                echo "No changes to commit after applying fixes"
+              fi
+            else
+              echo "No files needed fixes based on review comments"
+            fi
