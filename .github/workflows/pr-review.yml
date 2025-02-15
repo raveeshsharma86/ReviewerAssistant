@@ -130,7 +130,7 @@ jobs:
       - name: Print plain Text
         run: |
           echo "Printing plain text review comments"
-          cat review_comments_plain.txt
+          
           cat review_comments_plain.txt | \
           sed 's/^#\+//g' | \
           sed 's/\*\*//g' | \
@@ -142,6 +142,7 @@ jobs:
           tr '\n' ' ' | \
           sed 's/\s\+/ /g' | \
           jq -R -s '{ "text": . }' > clean_review_comments.json
+          cat clean_review_comments.json
 
       - name: Save AI Review Comments
         run: |
