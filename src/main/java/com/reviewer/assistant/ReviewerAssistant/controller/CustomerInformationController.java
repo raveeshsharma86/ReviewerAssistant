@@ -44,11 +44,11 @@ public class CustomerInformationController {
             System.out.println("last name cannot be null");
         }if(customerInformation.getAddressList() == null){
             System.out.println("Address list cannot be null");
-        }if(customerInformation.getPhoneNumberList() == null){
+        }/*if(customerInformation.getPhoneNumberList() == null){
             System.out.println("Address list cannot be null");
         }if(customerInformation.getEmailAddressList() == null){
             System.out.println("Phone list cannot be null");
-        }
+        }*/
         //making a copy paste mistake to fix
     }
 
