@@ -243,3 +243,102 @@ jobs:
             ### Reviewer Assist : Ai Generated Code Review
             
             ${{ env.COMMENT_BODY }}
+
+      # NEw
+      - name: Generate Code Fixes
+        timeout-minutes: 15
+        run: |
+            # Create directory for fixed code
+            mkdir -p code_fixes
+            
+            # For each file in the review
+            for file in $FILES; do
+            echo "Generating fixes for: $file"
+            
+            # Get original content and review
+            original_content=$(cat "file_contents/${file//\//_}.b64" | base64 -d)
+            review_content=$(cat "review_responses/${file//\//_}.txt")
+            
+            # Only process if review suggests changes
+            if [[ $(echo "$review_content" | grep -iE "suggestion|improve|fix|change|update|modify|replace|add|remove") ]]; then
+             # Create prompt for code fixing
+             jq --arg file "$file" \
+                --arg code "$original_content" \
+                --arg review "$review_content" \
+                '.contents.parts.text |= gsub("CURRENT_FILE_NAME"; $file) | 
+                 .contents.parts.text |= gsub("ORIGINAL_CODE"; $code) |
+                 .contents.parts.text |= gsub("REVIEW_COMMENTS"; $review)' \
+                fix_template.json > "code_fixes/request_${file//\//_}.json"
+            
+             # Get AI-generated fixes
+             curl -X POST "https://us-central1-aiplatform.googleapis.com/v1/projects/${{ secrets.GCP_PROJECT_ID }}/locations/us-central1/publishers/google/models/gemini-2.0-flash-exp:generateContent" \
+               -H "Authorization: Bearer $ACCESS_TOKEN" \
+               -H "Content-Type: application/json" \
+               -d @"code_fixes/request_${file//\//_}.json" > "code_fixes/response_${file//\//_}.json"
+            
+             # Extract fixed code
+             jq -r '.candidates[0].content.parts[0].text' "code_fixes/response_${file//\//_}.json" > "code_fixes/${file//\//_}.fixed"
+            
+             # Track files that were actually modified
+             echo "$file" >> modified_files.txt
+            fi
+            done
+
+      - name: Create Fix Pull Request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+                # Get source branch name from PR
+                SOURCE_BRANCH="${{ github.event.pull_request.head.ref }}"
+                
+                # Create AI-assisted branch name
+                AI_BRANCH="ai-assisted-${SOURCE_BRANCH}"
+                
+                # Fetch the source branch
+                git remote add source ${{ github.event.pull_request.head.repo.clone_url }}
+                git fetch source ${SOURCE_BRANCH}
+                
+                # Create new branch from source branch
+                git checkout -b ${AI_BRANCH} source/${SOURCE_BRANCH}
+                
+                # Only apply fixes for files that were modified
+                if [ -f modified_files.txt ]; then
+                  while IFS= read -r file; do
+                    # Ensure directory exists
+                    mkdir -p $(dirname "$file")
+                    # Copy fixed file
+                    cp "code_fixes/${file//\//_}.fixed" "$file"
+                    git add "$file"
+                  done < modified_files.txt
+                
+                  # Only create PR if there are changes
+                  if ! git diff --staged --quiet; then
+                    # Commit and push changes
+                    git config --global user.name "AI Code Fix Bot"
+                    git config --global user.email "bot@example.com"
+                    git commit -m "fix: Apply AI-suggested code improvements
+                
+                    Based on code review feedback from AI reviewer.
+                    Original PR: #${{ github.event.pull_request.number }}"
+                
+                    git push source ${AI_BRANCH}
+                
+                    # Create PR targeting the original source branch
+                    gh pr create \
+                      --title "🤖 AI Suggested Fixes for $SOURCE_BRANCH" \
+                      --body "This PR contains AI-suggested fixes based on the code review feedback.
+                
+                      Original PR: #${{ github.event.pull_request.number }}
+                
+                      Changes made:
+                      $(git diff --staged --name-only | sed 's/^/- /')
+                
+                      Note: Please review these changes carefully before merging." \
+                      --base "${SOURCE_BRANCH}" \
+                      --head "${AI_BRANCH}"
+                  else
+                    echo "No changes to commit after applying fixes"
+                  fi
+                else
+                  echo "No files needed fixes based on review comments"
+                fi
