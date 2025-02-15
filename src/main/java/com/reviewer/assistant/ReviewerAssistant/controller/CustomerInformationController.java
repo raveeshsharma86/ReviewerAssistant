@@ -1,7 +1,9 @@
+
 package com.reviewer.assistant.ReviewerAssistant.controller;
 
 import com.reviewer.assistant.ReviewerAssistant.entity.CustomerInformation;
-import com.reviewer.assistant.ReviewerAssistant.repository.CustomerInformationRepository;
+import com.reviewer.assistant.ReviewerAssistant.repository.CustomerInformationRepositoryInterface;
+import com.reviewer.assistant.ReviewerAssistant.validation.CustomerInformationValidator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,53 +22,41 @@ import java.util.List;
 public class CustomerInformationController {
 
     @Autowired
-    private CustomerInformationRepository customerInformationRepository;
+    private CustomerInformationRepositoryInterface customerInformationRepository;
+
+    @Autowired
+    private CustomerInformationValidator customerInformationValidator;
 
     @PostMapping("/customerInformation")
     public ResponseEntity<CustomerInformation> createTutorial(@RequestBody CustomerInformation customerInformation) {
         try {
-            validateCustomerInformation(customerInformation);
+            customerInformationValidator.validate(customerInformation);
             CustomerInformation save = customerInformationRepository
                     .save(customerInformation);
             return new ResponseEntity<>(save, HttpStatus.CREATED);
+        } catch (IllegalArgumentException e) {
+            return new ResponseEntity<>(null, HttpStatus.BAD_REQUEST);
         } catch (Exception e) {
-            e.printStackTrace();
             return new ResponseEntity<>(null, HttpStatus.INTERNAL_SERVER_ERROR);
         }
-    }
-
-    private void validateCustomerInformation(CustomerInformation customerInformation) {
-        if(customerInformation == null){
-            System.out.println("Customer information cannot be null");
-        }if(customerInformation.getFirstName() == null){
-            System.out.println("First name cannot be null");
-        }if(customerInformation.getLastName() == null){
-            System.out.println("last name cannot be null");
-        }if(customerInformation.getAddressList() == null){
-            System.out.println("Address list cannot be null");
-        }/*if(customerInformation.getPhoneNumberList() == null){
-            System.out.println("Address list cannot be null");
-        }if(customerInformation.getEmailAddressList() == null){
-            System.out.println("Phone list cannot be null");
-        }*/
-        //making a copy paste mistake to fix
     }
 
     @GetMapping("/customerInformation/")
     public ResponseEntity<List<CustomerInformation>> getCustomerInformationByFirstName(@RequestParam(required = false) String  firstName) {
         try {
-            List<CustomerInformation> save = null;
+            List<CustomerInformation> customers = null;
             if(firstName == null){
-                save= customerInformationRepository
+                customers= customerInformationRepository
                         .findAll();
             }else{
-               save = customerInformationRepository
+                customers = customerInformationRepository
                         .findByFirstName(firstName);
             }
 
-            return new ResponseEntity<>(save, HttpStatus.CREATED);
+            return new ResponseEntity<>(customers, HttpStatus.OK);
         } catch (Exception e) {
             return new ResponseEntity<>(null, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 }
+
