@@ -251,37 +251,52 @@ jobs:
             # Create directory for fixed code
             mkdir -p code_fixes
             
+            # Create fix template JSON
+            cat > fix_template.json << 'EOL'
+            {
+              "contents": {
+                "parts": [
+                  {
+                    "text": "You are an expert code reviewer and fixer. Here is the original code for file CURRENT_FILE_NAME:\n\n```\nORIGINAL_CODE\n```\n\nHere are the review comments:\n\nREVIEW_COMMENTS\n\nPlease provide the fixed version of the code addressing all review comments. Only output the fixed code without any explanations or markdown formatting. Keep the same file structure and format. If no changes are needed, output the original code as is."
+                  }
+                ]
+              }
+            }
+            EOL
+            
             # For each file in the review
             for file in $FILES; do
-            echo "Generating fixes for: $file"
+              echo "Generating fixes for: $file"
             
-            # Get original content and review
-            original_content=$(cat "file_contents/${file//\//_}.b64" | base64 -d)
-            review_content=$(cat "review_responses/${file//\//_}.txt")
+              # Get original content and review
+              original_content=$(cat "file_contents/${file//\//_}.b64" | base64 -d)
+              review_content=$(cat "review_responses/${file//\//_}.txt")
             
-            # Only process if review suggests changes
-            if [[ $(echo "$review_content" | grep -iE "suggestion|improve|fix|change|update|modify|replace|add|remove") ]]; then
-             # Create prompt for code fixing
-             jq --arg file "$file" \
-                --arg code "$original_content" \
-                --arg review "$review_content" \
-                '.contents.parts.text |= gsub("CURRENT_FILE_NAME"; $file) | 
-                 .contents.parts.text |= gsub("ORIGINAL_CODE"; $code) |
-                 .contents.parts.text |= gsub("REVIEW_COMMENTS"; $review)' \
-                fix_template.json > "code_fixes/request_${file//\//_}.json"
+              # Only process if review suggests changes
+              if [[ $(echo "$review_content" | grep -iE "suggestion|improve|fix|change|update|modify|replace|add|remove") ]]; then
+                # Create prompt for code fixing
+                jq --arg file "$file" \
+                   --arg code "$original_content" \
+                   --arg review "$review_content" \
+                   '.contents.parts.text |= gsub("CURRENT_FILE_NAME"; $file) | 
+                    .contents.parts.text |= gsub("ORIGINAL_CODE"; $code) |
+                    .contents.parts.text |= gsub("REVIEW_COMMENTS"; $review)' \
+                   fix_template.json > "code_fixes/request_${file//\//_}.json"
             
-             # Get AI-generated fixes
-             curl -X POST "https://us-central1-aiplatform.googleapis.com/v1/projects/${{ secrets.GCP_PROJECT_ID }}/locations/us-central1/publishers/google/models/gemini-2.0-flash-exp:generateContent" \
-               -H "Authorization: Bearer $ACCESS_TOKEN" \
-               -H "Content-Type: application/json" \
-               -d @"code_fixes/request_${file//\//_}.json" > "code_fixes/response_${file//\//_}.json"
+                # Get AI-generated fixes
+                curl -X POST "https://us-central1-aiplatform.googleapis.com/v1/projects/${{ secrets.GCP_PROJECT_ID }}/locations/us-central1/publishers/google/models/gemini-2.0-flash-exp:generateContent" \
+                  -H "Authorization: Bearer $ACCESS_TOKEN" \
+                  -H "Content-Type: application/json" \
+                  -d @"code_fixes/request_${file//\//_}.json" > "code_fixes/response_${file//\//_}.json"
             
-             # Extract fixed code
-             jq -r '.candidates[0].content.parts[0].text' "code_fixes/response_${file//\//_}.json" > "code_fixes/${file//\//_}.fixed"
+                # Extract fixed code and clean any markdown
+                jq -r '.candidates[0].content.parts[0].text' "code_fixes/response_${file//\//_}.json" | \
+                  sed 's/^```[a-zA-Z]*$//' | \
+                  sed 's/^```$//' > "code_fixes/${file//\//_}.fixed"
             
-             # Track files that were actually modified
-             echo "$file" >> modified_files.txt
-            fi
+                # Track files that were actually modified
+                echo "$file" >> modified_files.txt
+              fi
             done
 
       - name: Create Fix Pull Request
