@@ -308,63 +308,145 @@ jobs:
               fi
             done
 
+      - name: Parse Review Suggestions
+        run: |
+            mkdir -p new_files
+            # For each review response
+            for file in $FILES; do
+            review_content=$(cat "review_responses/${file//\//_}.txt")
+            
+            # Extract suggestions for new files
+            # Look for patterns like "Create a new file", "You should create", etc.
+            echo "$review_content" | grep -iE "create (a )?new file|should create|need to create|create.*\.java|create.*\.py|create.*\.cs" | \
+            while read -r suggestion; do
+             # Try to extract the suggested file path
+             suggested_file=$(echo "$suggestion" | grep -oE '[a-zA-Z0-9/_\-]+\.(java|py|cs|properties|yml)' || true)
+             if [ ! -z "$suggested_file" ]; then
+               echo "$suggested_file:$review_content" >> suggested_new_files.txt
+             fi
+            done
+            done
+
+      - name: Generate New Files
+        if: hashFiles('suggested_new_files.txt') != ''
+        run: |
+                while IFS=: read -r file_path review_content; do
+                  echo "Generating new file: $file_path"
+                
+                  # Create prompt for new file generation
+                  cat > "new_files/request_${file_path//\//_}.json" << EOL
+                  {
+                    "contents": {
+                      "role": "user",
+                      "parts": [{
+                        "text": "Please create the complete code for a new file $file_path based on this review suggestion:\n\n$review_content\n\nOnly output the code without any explanations or markdown formatting."
+                      }]
+                    }
+                  }
+                  EOL
+                
+                  # Get AI-generated new file content
+                  curl -X POST "https://us-central1-aiplatform.googleapis.com/v1/projects/${{ secrets.GCP_PROJECT_ID }}/locations/us-central1/publishers/google/models/gemini-2.0-flash-exp:generateContent" \
+                    -H "Authorization: Bearer $ACCESS_TOKEN" \
+                    -H "Content-Type: application/json" \
+                    -d @"new_files/request_${file_path//\//_}.json" > "new_files/response_${file_path//\//_}.json"
+                
+                  # Extract new file content
+                  jq -r '.candidates[0].content.parts[0].text' "new_files/response_${file_path//\//_}.json" | \
+                    sed 's/^```[a-zA-Z]*$//' | \
+                    sed 's/^```$//' > "new_files/${file_path//\//_}.new"
+                
+                  # Add to list of files to be created
+                  echo "$file_path" >> new_files_list.txt
+                done < suggested_new_files.txt
+
       - name: Create Fix Pull Request
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-            # Get source branch name from PR
-            SOURCE_BRANCH="${{ github.event.pull_request.head.ref }}"
-            
-            # Create AI-assisted branch name with timestamp to make it unique
-            TIMESTAMP=$(date +%Y%m%d%H%M%S)
-            AI_BRANCH="ai-assisted-${SOURCE_BRANCH}-${TIMESTAMP}"
-            
-            # Fetch the source branch
-            git remote add source ${{ github.event.pull_request.head.repo.clone_url }}
-            git fetch source ${SOURCE_BRANCH}
-            
-            # Create new branch from source branch
-            git checkout -b ${AI_BRANCH} source/${SOURCE_BRANCH}
-            
-            # Only apply fixes for files that were modified
-            if [ -f modified_files.txt ]; then
-              while IFS= read -r file; do
-                # Ensure directory exists
-                mkdir -p $(dirname "$file")
-                # Copy fixed file
-                cp "code_fixes/${file//\//_}.fixed" "$file"
-                git add "$file"
-              done < modified_files.txt
-            
-              # Only create PR if there are changes
-              if ! git diff --staged --quiet; then
-                # Commit and push changes
-                git config --global user.name "AI Code Fix Bot"
-                git config --global user.email "bot@example.com"
-                git commit -m "fix: Apply AI-suggested code improvements
-            
-                Based on code review feedback from AI reviewer.
-                Original PR: #${{ github.event.pull_request.number }}"
-            
-                # Force push to the new unique branch
-                git push -u source ${AI_BRANCH}
-            
-                # Create PR targeting the original source branch
-                gh pr create \
-                  --title "🤖 AI Suggested Fixes for ${SOURCE_BRANCH} (${TIMESTAMP})" \
-                  --body "This PR contains AI-suggested fixes based on the code review feedback.
-            
-                  Original PR: #${{ github.event.pull_request.number }}
-            
-                  Changes made:
-                  $(git diff --staged --name-only | sed 's/^/- /')
-            
-                  Note: Please review these changes carefully before merging." \
-                  --base "${SOURCE_BRANCH}" \
-                  --head "${AI_BRANCH}"
-              else
-                echo "No changes to commit after applying fixes"
-              fi
-            else
-              echo "No files needed fixes based on review comments"
-            fi
+                # Get source branch name from PR
+                SOURCE_BRANCH="${{ github.event.pull_request.head.ref }}"
+                
+                # Create AI-assisted branch name with timestamp
+                TIMESTAMP=$(date +%Y%m%d%H%M%S)
+                AI_BRANCH="ai-assisted-${SOURCE_BRANCH}-${TIMESTAMP}"
+                
+                # Fetch the source branch
+                git remote add source ${{ github.event.pull_request.head.repo.clone_url }}
+                git fetch source ${SOURCE_BRANCH}
+                
+                # Create new branch from source branch
+                git checkout -b ${AI_BRANCH} source/${SOURCE_BRANCH}
+                
+                # Handle modified files
+                if [ -f modified_files.txt ]; then
+                  while IFS= read -r file; do
+                    mkdir -p $(dirname "$file")
+                    cp "code_fixes/${file//\//_}.fixed" "$file"
+                    git add "$file"
+                  done < modified_files.txt
+                fi
+                
+                # Handle new files
+                if [ -f new_files_list.txt ]; then
+                  while IFS= read -r file; do
+                    mkdir -p $(dirname "$file")
+                    cp "new_files/${file//\//_}.new" "$file"
+                    git add "$file"
+                  done < new_files_list.txt
+                fi
+                
+                # Only create PR if there are changes
+                if ! git diff --staged --quiet; then
+                  # Commit and push changes
+                  git config --global user.name "AI Code Fix Bot"
+                  git config --global user.email "bot@example.com"
+                
+                  # Create detailed commit message
+                  echo "fix: Apply AI-suggested code improvements" > commit_msg.txt
+                  echo "" >> commit_msg.txt
+                  echo "Based on code review feedback from AI reviewer." >> commit_msg.txt
+                  echo "Original PR: #${{ github.event.pull_request.number }}" >> commit_msg.txt
+                  echo "" >> commit_msg.txt
+                
+                  if [ -f modified_files.txt ]; then
+                    echo "Modified files:" >> commit_msg.txt
+                    cat modified_files.txt | sed 's/^/- /' >> commit_msg.txt
+                    echo "" >> commit_msg.txt
+                  fi
+                
+                  if [ -f new_files_list.txt ]; then
+                    echo "New files created:" >> commit_msg.txt
+                    cat new_files_list.txt | sed 's/^/- /' >> commit_msg.txt
+                  fi
+                
+                  git commit -F commit_msg.txt
+                  git push -u source ${AI_BRANCH}
+                
+                  # Create PR with detailed description
+                  gh pr create \
+                    --title "🤖 AI Suggested Fixes for ${SOURCE_BRANCH} (${TIMESTAMP})" \
+                    --body "This PR contains AI-suggested fixes based on the code review feedback.
+                
+                    Original PR: #${{ github.event.pull_request.number }}
+                
+                    ## Changes Made
+                
+                    $(if [ -f modified_files.txt ]; then
+                      echo "### Modified Files:"
+                      cat modified_files.txt | sed 's/^/- /'
+                      echo ""
+                    fi)
+                
+                    $(if [ -f new_files_list.txt ]; then
+                      echo "### New Files Created:"
+                      cat new_files_list.txt | sed 's/^/- /'
+                      echo ""
+                    fi)
+                
+                    Note: Please review these changes carefully before merging." \
+                    --base "${SOURCE_BRANCH}" \
+                    --head "${AI_BRANCH}"
+                else
+                  echo "No changes to commit after applying fixes"
+                fi
