@@ -1,8 +1,12 @@
+
 package com.reviewer.assistant.ReviewerAssistant.controller;
 
 import com.reviewer.assistant.ReviewerAssistant.entity.CustomerInformation;
-import com.reviewer.assistant.ReviewerAssistant.repository.CustomerInformationRepository;
+import com.reviewer.assistant.ReviewerAssistant.service.CustomerInformationService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -11,6 +15,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 
+import javax.validation.Valid;
 import java.util.List;
 
 /**
@@ -19,54 +24,37 @@ import java.util.List;
 @Controller
 public class CustomerInformationController {
 
+    private static final Logger logger = LoggerFactory.getLogger(CustomerInformationController.class);
+
     @Autowired
-    private CustomerInformationRepository customerInformationRepository;
+    private CustomerInformationService customerInformationService;
 
     @PostMapping("/customerInformation")
-    public ResponseEntity<CustomerInformation> createTutorial(@RequestBody CustomerInformation customerInformation) {
+    public ResponseEntity<CustomerInformation> createCustomerInformation(@Valid @RequestBody CustomerInformation customerInformation) {
         try {
-            validateCustomerInformation(customerInformation);
-            CustomerInformation save = customerInformationRepository
-                    .save(customerInformation);
-            return new ResponseEntity<>(save, HttpStatus.CREATED);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return new ResponseEntity<>(null, HttpStatus.INTERNAL_SERVER_ERROR);
+            CustomerInformation savedCustomerInformation = customerInformationService.createCustomerInformation(customerInformation);
+            return new ResponseEntity<>(savedCustomerInformation, HttpStatus.CREATED);
+        } catch (IllegalArgumentException e) {
+            logger.error("Invalid customer information provided", e);
+            return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+        } catch (DataAccessException e) {
+            logger.error("Error accessing data", e);
+            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
-    private void validateCustomerInformation(CustomerInformation customerInformation) {
-        if(customerInformation == null){
-            System.out.println("Customer information cannot be null");
-        }if(customerInformation.getFirstName() == null){
-            System.out.println("First name cannot be null");
-        }if(customerInformation.getLastName() == null){
-            System.out.println("last name cannot be null");
-        }if(customerInformation.getAddressList() == null){
-            System.out.println("Address list cannot be null");
-        }if(customerInformation.getPhoneNumberList() == null){
-            System.out.println("Address list cannot be null");
-        }if(customerInformation.getEmailAddressList() == null){
-            System.out.println("Phone list cannot be null");
-        }
-        //making a copy paste mistake to fix
-    }
-
-    @GetMapping("/customerInformation/")
-    public ResponseEntity<List<CustomerInformation>> getCustomerInformationByFirstName(@RequestParam(required = false) String  firstName) {
+    @GetMapping("/customerInformation")
+    public ResponseEntity<List<CustomerInformation>> getCustomerInformationByFirstName(@RequestParam(required = false) String firstName) {
         try {
-            List<CustomerInformation> save = null;
-            if(firstName == null){
-                save= customerInformationRepository
-                        .findAll();
-            }else{
-               save = customerInformationRepository
-                        .findByFirstName(firstName);
+            List<CustomerInformation> customerInformations = customerInformationService.getCustomerInformationByFirstName(firstName);
+            if (customerInformations == null || customerInformations.isEmpty()) {
+                return new ResponseEntity<>(HttpStatus.NOT_FOUND);
             }
-
-            return new ResponseEntity<>(save, HttpStatus.CREATED);
+            return new ResponseEntity<>(customerInformations, HttpStatus.OK);
         } catch (Exception e) {
-            return new ResponseEntity<>(null, HttpStatus.INTERNAL_SERVER_ERROR);
+            logger.error("Error retrieving customer information", e);
+            return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 }
+
